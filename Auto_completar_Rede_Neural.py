@@ -5,54 +5,54 @@ import torch.nn.functional as F
 import torch.optim as optim
 from torch.autograd import Variable
 torch.manual_seed(1)
-context_size=2
-embedding_dim=10
+tamanho_contexto=2
+dimensao_embeeding=10
 
-raw_text='''#historico de texto'''.split()
+texto='''#historico de texto'''.split()
 
-def mak_sentence(context, word_to_idx):
-  idxs=[word_to_idx[i] for i in context]
+def mak_sentence(contexto, word_to_idx):
+  idxs=[word_to_idx[i] for i in contexto]
   return torch.tensor(idxs, dtype=torch.long)
-vocab=set(raw_text)
-vocab_size=len(vocab)
-word_to_idx={word: i for i, word in enumerate(vocab)}
-idx_to_word = {i: word for i, word in enumerate(vocab)}
-data=[]
-for i in range(2, len(raw_text)-2):
-  context=[raw_text[i-2], raw_text[i-1], raw_text[i+1], raw_text[i+2]]
-  target=raw_text[i]
-  data.append((context, target))
+vocabulario=set(texto)
+vocabulario_tamanho=len(vocabulario)
+word_to_idx={word: i for i, word in enumerate(vocabulario)}
+idx_to_word = {i: word for i, word in enumerate(vocabulario)}
+dado=[]
+for i in range(2, len(texto)-2):
+  contexto=[texto[i-2], texto[i-1], texto[i+1], texto[i+2]]
+  alvo=texto[i]
+  dado.append((contexto, alvo))
 class CBOW(nn.Module):
-    def __init__(self, vocab_size, embedding_dim):
+    def __init__(self, vocabulario_tamanho, dimensao_embeeding):
         super(CBOW, self).__init__()
-        self.embeddings=nn.Embedding(vocab_size, embedding_dim)
-        self.proj = nn.Linear(embedding_dim, 128)
-        self.output = nn.Linear(128, vocab_size)
+        self.embeddings=nn.Embedding(vocab_size, dimensao_embeeding)
+        self.proj = nn.Linear(dimensao_embeeding, 128)
+        self.output = nn.Linear(128, vocabulario_tamanho)
 
-    def forward(self, inputs):
-        embeds = sum(self.embeddings(inputs)).view(1, -1)
-        out = F.relu(self.proj(embeds))
-        out = self.output(out)
-        nll_prob = F.log_softmax(out, dim=-1)
+    def forward(self, entrada):
+        embeds=sum(self.embeddings(inputs)).view(1, -1)
+        saida=F.relu(self.proj(embeds))
+        saida=self.output(saida)
+        nll_prob=F.log_softmax(saida, dim=-1)
         return nll_prob
 
-model=CBOW(vocab_size, embedding_dim)
-optimizer = optim.SGD(model.parameters(), lr=0.001)
+model=CBOW(vocab_size, dimensao_embeeding)
+otimizador=optim.SGD(model.parameters(), lr=0.001)
 
 lossers=[]
 loss_function=nn.NLLLoss()
-for epoch in range(100):
-  for context, target in data:
-    context_idx=mak_sentence(context, word_to_idx)
+for epoca in range(100):
+  for contexto, alvo in dado:
+    contexto_idx=mak_sentence(contexto, word_to_idx)
     model.zero_grad()
-    llm_prob=model(context_idx)
-    loss=loss_function(llm_prob, Variable(torch.tensor([word_to_idx[target]])))
+    llm_prob=model(contexto_idx)
+    loss=loss_function(llm_prob, Variable(torch.tensor([word_to_idx[alvo]])))
     loss.backward()
-    optimizer.step()
+    otimizador.step()
   lossers.append(loss.data)
 
-context=['#qualquer palavra']
-context_idx=mak_sentence(context, word_to_idx)
-a=model(context_idx).data.numpy()
-make_in=np.argmax(a)
-print(idx_to_word[make_in]) #qual palavra vai completar
+contexto=['#qualquer palavra']
+contexto_idx=mak_sentence(contexto, word_to_idx)
+a=model(contexto_idx).data.numpy()
+fazer_entrada=np.argmax(a)
+print(idx_to_word[fazer_entrada]) #qual palavra vai completar
