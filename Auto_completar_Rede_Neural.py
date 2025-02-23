@@ -1,3 +1,4 @@
+#esse código é uma rede neural linear que usa embbeding(que transforma texto em tuplas de números e relaciona as palavras para compreender melhor suas relações) que resolve qual será a proxima palavra que é mais comum de você utilizar. 
 import torch
 import numpy as np
 import torch.nn as nn
