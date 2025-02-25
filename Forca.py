@@ -1,3 +1,4 @@
+#esse é um código de forca completo cada palavra para o jogo é sorteada você tem o tamanho da palavra mais 4 tentativas
 from random import randint
 palavras0=['hotel','shopping','aeroporto','escola','museu','faculdade']
 palavras1=['macarrao','bacalhau','bruschetta','pizza','carne', 'esfiha']
