@@ -1,7 +1,7 @@
 #ações da Petrobras PETR4.SA2.csv
 from sklearn.preprocessing import MinMaxScaler
 from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import Dense, SimpleRNN
+from tensorflow.keras.layers import Dense, LSTM
 import pandas as pd, numpy as np, tensorflow as tf, matplotlib.pyplot as plt
 
 dados=pd.read_csv('/content/PETR4.SA2.csv')
