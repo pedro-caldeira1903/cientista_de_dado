@@ -99,4 +99,6 @@ while True:
   text=input("Você: ")
   if text.lower() == "sair":
     break
-  print("ChatBot:", chatbot_response(text))
+  saida=chatbot_response(text)
+  data['intents'].append({'pattern': text, 'response': saida})
+  print(f'ChatBot: {saida}')
