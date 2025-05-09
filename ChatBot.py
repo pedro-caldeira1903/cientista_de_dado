@@ -1,4 +1,4 @@
-import torch, torch.nn as nn, torch.optim as optim, nltk, numpy as np, time
+import torch, torch.nn as nn, torch.optim as optim, nltk, time, math
 from nltk.tokenize import word_tokenize
 from sumy.parsers.plaintext import PlaintextParser
 from sumy.summarizers.text_rank import TextRankSummarizer
@@ -7,98 +7,122 @@ from bs4 import BeautifulSoup
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 
-nltk.download('punkt_tab')
+nltk.download('punkt')
 def google_search(query):
-  url=f"https://html.duckduckgo.com/html/?q={query.replace('?', ' ')}"
-  options=Options()
+  url = f"https://html.duckduckgo.com/html/?q={query.replace('?', ' ')}"
+  options = Options()
   options.add_argument("--headless")
-  pesquisa=webdriver.Chrome(options=options)
+  driver = webdriver.Chrome(options=options)
   try:
-    pesquisa.get(url)
-    soup=BeautifulSoup(pesquisa.page_source, "html.parser")
-    pesquisa.quit()
+    driver.get(url)
+    soup=BeautifulSoup(driver.page_source, "html.parser")
+    driver.quit()
     links=[a.get("href") for a in soup.find_all("a", "result__a")]
-    return links[:3]
+    return links
   except:
-    return "Não consegui encontrar informações sobre isso."
+    return []
 
 def extrair_texto(texto):
   links=google_search(texto)
+  if not links:
+    return "Não consegui encontrar informações sobre isso."
   options=Options()
   options.add_argument("--headless")
-  pesquisa=webdriver.Chrome(options=options)
+  driver=webdriver.Chrome(options=options)
   texto_total=""
   for link in links:
     try:
-      pesquisa.get(f'https:{link}')
+      driver.get(f'https:{link}')
       time.sleep(2)
-      soup=BeautifulSoup(pesquisa.page_source, "html.parser")
+      soup=BeautifulSoup(driver.page_source, "html.parser")
       paragrafos=soup.find_all('p')
       texto_total+=' '.join([p.get_text() for p in paragrafos if len(p.get_text()) > 30]) + '\n'
     except Exception as e:
       print(f'Erro ao acessar {link}: {e}')
-  pesquisa.quit()
-  parser=PlaintextParser(texto_total, Tokenizer('portuguese'))
+  driver.quit()
+  parser=PlaintextParser.from_string(texto_total, Tokenizer('portuguese'))
   summarizer=TextRankSummarizer()
   resumo=summarizer(parser.document, 3)
   return ' '.join(str(sentenca) for sentenca in resumo)
 
-data={"intents": [{"pattern": "Oi", "response": "Sou o PedroBot"},{"pattern": "Qual a suas diretrizes?", "response": "As 3 leis da robotica de Asimov"}]}
-all_sentece=[]
-for intent in data["intents"]:
-    words = word_tokenize(intent["pattern"].lower())
-    all_sentece.extend(words)
+data={"intents": [{"pattern": "Oi", "response": "Sou o PedroBot um assistente virtual"},{"pattern": "Qual a suas diretrizes", "response": "As 3 leis da robótica de Asimov"}]}
 
-all_words=sorted(set(all_sentece))
-vocab=len(all_words)
-def bag_of_words(sentence):
-  sentence_words=word_tokenize(sentence.lower())
-  bag=np.zeros(vocab, dtype=np.float32)
-  for word in sentence_words:
-    if word in all_words:
-      bag[all_words.index(word)]=1.0
-  return torch.tensor(bag).unsqueeze(0)
-class Chatbot(nn.Module):
-  def __init__(self, input_size, hidden_size, output_size):
-    super(Chatbot, self).__init__()
-    self.f1=nn.Linear(input_size, hidden_size)
-    self.f2=nn.ReLU()
-    self.f3=nn.Linear(hidden_size, output_size)
+def atualizar_texto(data):
+  all_words=[]
+  for intent in data["intents"]:
+    tokens=word_tokenize(intent["pattern"].lower())
+    all_words.extend(tokens)
+  all_words=sorted(set(all_words))
+  word2idx={w: i for i, w in enumerate(all_words)}
+  return all_words, word2idx
+
+def tokenize_indices(sentence, word2idx):
+  tokens=word_tokenize(sentence.lower())
+  idxs=[word2idx[w] for w in tokens if w in word2idx]
+  return torch.tensor(idxs, dtype=torch.long).unsqueeze(0)
+
+class PositionalEncoding(nn.Module):
+  def __init__(self, d_model, max_len):
+    super().__init__()
+    pe=torch.zeros(max_len, d_model)
+    pos=torch.arange(0, max_len, dtype=torch.float32).unsqueeze(1)
+    div_term=torch.exp(torch.arange(0, d_model, 2).float() * (-math.log(10000.0) / d_model))
+    pe[:, 0::2]=torch.sin(pos * div_term)
+    pe[:, 1::2]=torch.cos(pos * div_term)
+    pe=pe.unsqueeze(0)
+    self.register_buffer('pe', pe)
 
   def forward(self, x):
-    x=self.f1(x)
-    x=self.f2(x)
-    x=self.f3(x)
+    x=x+self.pe[:, :x.size(1), :]
     return x
-input_size=vocab
-hidden_size=8
-output_size=len(data["intents"])
-modelo=Chatbot(input_size, hidden_size, output_size)
-criterion=nn.CrossEntropyLoss()
-optimizer=optim.Adam(modelo.parameters(), lr=0.01)
-for epoch in range(100):
-  for intent in data["intents"]:
-    x_treino=bag_of_words(intent["pattern"])
-    y_treino=torch.tensor([data["intents"].index(intent)], dtype=torch.long)
-    saida=modelo(x_treino)
-    loss=criterion(saida, y_treino)
-    optimizer.zero_grad()
-    loss.backward()
-    optimizer.step()
-print("Treinamento concluído!")
 
+class TransformerChatbot(nn.Module):
+  def __init__(self, vocab_size, d_model, nhead, num_layers, hidden_dim, output_size, max_len):
+    super().__init__()
+    self.embedding=nn.Embedding(vocab_size, d_model)
+    self.pos_encoder=PositionalEncoding(d_model, max_len)
+    encoder_layer=nn.TransformerEncoderLayer(d_model=d_model, nhead=nhead, dim_feedforward=hidden_dim, batch_first=True)
+    self.transformer_encoder=nn.TransformerEncoder(encoder_layer, num_layers=num_layers)
+    self.classifier=nn.Linear(d_model, output_size)
+
+  def forward(self, x):
+    embeds=self.embedding(x)
+    x=self.pos_encoder(embeds)
+    x=self.transformer_encoder(x)
+    pooled=x.mean(dim=1)
+    return self.classifier(pooled)
+
+def train_model(model, data, word2idx, epochs=50):
+  criterion=nn.CrossEntropyLoss()
+  optimizer=optim.Adam(model.parameters(), lr=0.01)
+  for epoch in range(epochs):
+    for i, intent in enumerate(data["intents"]):
+      x_train=tokenize_indices(intent["pattern"], word2idx)
+      y_train=torch.tensor([i], dtype=torch.long)
+      output=model(x_train)
+      loss=criterion(output, y_train)
+      optimizer.zero_grad()
+      loss.backward()
+      optimizer.step()
+
+all_words, word2idx=atualizar_texto(data)
+model=TransformerChatbot(vocab_size=len(word2idx),d_model=32,nhead=4,num_layers=2,hidden_dim=64,output_size=len(data['intents']),max_len=50)
+train_model(model, data, word2idx, epochs=50)
 def chatbot_response(text):
-  x_test=bag_of_words(text)
-  output=modelo(x_test)
-  _, predicted=torch.max(output, dim=1)
-  if torch.max(output).item()< 1.0:
+  x=tokenize_indices(text, word2idx)
+  output=model(x)
+  if x.numel()==0:
     return extrair_texto(text)
+  _, predicted=torch.max(output, dim=1)
   return data["intents"][predicted.item()]["response"]
 
 while True:
-  text=input("Você: ")
-  if text.lower() == "sair":
+  user_input=input("Você: ")
+  if user_input.lower() == "sair":
     break
-  saida=chatbot_response(text)
-  data['intents'].append({'pattern': text, 'response': saida})
-  print(f'ChatBot: {saida}')
+  resposta=chatbot_response(user_input)
+  print(f"ChatBot: {resposta}")
+  data['intents'].append({'pattern': user_input, 'response': resposta})
+  all_words, word2idx=atualizar_texto(data)
+  model=TransformerChatbot(vocab_size=len(word2idx),d_model=32,nhead=4,num_layers=2,hidden_dim=64,output_size=len(data['intents']),max_len=50)
+  train_model(model, data, word2idx, epochs=50)
