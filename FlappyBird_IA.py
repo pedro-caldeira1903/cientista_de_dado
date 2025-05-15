@@ -1,10 +1,5 @@
-import pygame
-import random
-import numpy as np
+import pygame, random, numpy as np, torch, torch.nn as nn, torch.optim as optim
 from collections import deque
-import torch
-import torch.nn as nn
-import torch.optim as optim
 
 pygame.init()
 
@@ -20,22 +15,18 @@ class Passaro:
         self.vel=-9
 
     def atualizar(self):
-        self.vel+=1
-        self.rect.y+=self.vel
+        self.vel, self.rect.y+=1, self.vel
 
 class Cano:
     def __init__(self):
-        self.largura=60
-        self.espaco=200
-        self.x=LARGURA_TELA
-        self.topo=random.randint(50, ALTURA_TELA - self.espaco - 50)
+        self.largura, self.espaco, self.x, self.topo=60, 200, LARGURA_TELA, random.randint(50, ALTURA_TELA - self.espaco - 50)
 
     def atualizar(self):
-        self.x -= 5
+        self.x-=5
 
     def retangulos(self):
-        topo_rect = pygame.Rect(self.x, 0, self.largura, self.topo)
-        base_rect = pygame.Rect(self.x, self.topo + self.espaco, self.largura, ALTURA_TELA - self.topo - self.espaco)
+        topo_rect=pygame.Rect(self.x, 0, self.largura, self.topo)
+        base_rect=pygame.Rect(self.x, self.topo + self.espaco, self.largura, ALTURA_TELA - self.topo - self.espaco)
         return topo_rect, base_rect
 
 class FlappyBirdEnv:
@@ -43,34 +34,31 @@ class FlappyBirdEnv:
         self.reset()
 
     def reset(self):
-        self.passaro=Passaro()
-        self.canos=[Cano()]
-        self.frame=0
-        self.pontos=0
+        self.passaro, self.canos, self.frame, self.pontos=Passaro(), [Cano()], 0, 0
         return self.obter_estado()
 
     def step(self, acao):
         recompensa=-0.1
         self.frame+=1
 
-        if acao == 1:
+        if acao==1:
             self.passaro.pular()
 
         self.passaro.atualizar()
 
-        remover_canos = []
-        adicionar_cano = False
+        remover_canos=[]
+        adicionar_cano=False
 
         for cano in self.canos:
             cano.atualizar()
-            if cano.x + cano.largura < 0:
+            if cano.x+cano.largura < 0:
                 remover_canos.append(cano)
 
             if cano.x + cano.largura < self.passaro.rect.x and not hasattr(cano, "passou"):
-                cano.passou = True
-                self.pontos += 1
-                recompensa += 10
-                adicionar_cano = True
+                cano.passou=True
+                self.pontos+=1
+                recompensa+=10
+                adicionar_cano=True
 
         if adicionar_cano:
             self.canos.append(Cano())
@@ -92,39 +80,32 @@ class FlappyBirdEnv:
         tela.fill(BRANCO)
         pygame.draw.rect(tela, PRETO, self.passaro.rect)
         for cano in self.canos:
-            topo, base = cano.retangulos()
+            topo, base=cano.retangulos()
             pygame.draw.rect(tela, PRETO, topo)
             pygame.draw.rect(tela, PRETO, base)
-        texto = fonte.render(f"Pontos: {self.pontos}", True, PRETO)
+        texto=fonte.render(f"Pontos: {self.pontos}", True, PRETO)
         tela.blit(texto, (10, 10))
         pygame.display.flip()
 
     def obter_estado(self):
-        cano_proximo = None
+        cano_proximo=None
         for cano in self.canos:
-            if cano.x + cano.largura > self.passaro.rect.x:
-                cano_proximo = cano
+            if cano.x+cano.largura > self.passaro.rect.x:
+                cano_proximo=cano
                 break
 
         if not cano_proximo:
-            cano_proximo = Cano()
+            cano_proximo=Cano()
 
-        dist_x = cano_proximo.x - self.passaro.rect.x
-        dist_y = (cano_proximo.topo + cano_proximo.espaco / 2) - self.passaro.rect.y
+        dist_x=cano_proximo.x-self.passaro.rect.x
+        dist_y=(cano_proximo.topo+cano_proximo.espaco/2)-self.passaro.rect.y
 
         return np.array([self.passaro.rect.y / ALTURA_TELA,np.clip(self.passaro.vel, -20, 20) / 20,dist_x / LARGURA_TELA,dist_y / ALTURA_TELA], dtype=np.float32)
 
 class DQN(nn.Module):
     def __init__(self, input_dim, output_dim):
         super(DQN, self).__init__()
-        self.fc = nn.Sequential(
-            nn.Linear(input_dim, 128),
-            nn.ReLU(),
-            nn.Linear(128, 128),
-            nn.ReLU(),
-            nn.Linear(128, output_dim)
-        )
-
+        self.fc = nn.Sequential(nn.Linear(input_dim, 128),nn.ReLU(),nn.Linear(128, 128),nn.ReLU(),nn.Linear(128, output_dim))
     def forward(self, x):
         return self.fc(x)
 
@@ -162,10 +143,10 @@ class Agente:
             target=reward
             if not done:
                 target+=self.gamma * torch.max(self.model(next_state_tensor)).item()
-            target_f=self.model(state_tensor)
-            target_f[0][action]=target
-            self.optimizer.zero_grad()
-            loss=self.criterion(target_f, self.model(state_tensor))
+            q_values = self.model(state_tensor)
+            target_q_values = q_values.clone().detach()
+            target_q_values[0][action] = target
+            loss = self.criterion(q_values, target_q_values)
             loss.backward()
             self.optimizer.step()
 
@@ -173,10 +154,7 @@ class Agente:
         if self.epsilon > self.epsilon_min:
             self.epsilon*=self.epsilon_decay
 
-EPISODIOS=3000
-env=FlappyBirdEnv()
-agente=Agente(state_size=4, action_size=2)
-batch_size=32
+EPISODIOS, env, agente, batch_size=3000, FlappyBirdEnv(), Agente(state_size=4, action_size=2), 32
 
 for e in range(EPISODIOS):
     estado=env.reset()
