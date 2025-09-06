@@ -7,7 +7,7 @@ const PORT = 5000;
 
 app.use("/static", express.static(path.join(__dirname, "static")));
 app.get("/", (req, res) => {
-  res.sendFile(path.join(__dirname, "templates", "ex01.html"));
+  res.sendFile(path.join(__dirname, "templates", "index.html"));
 });
 
 async function abrirNavegador() {
